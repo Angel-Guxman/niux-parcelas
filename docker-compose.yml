@@ -15,7 +15,7 @@ services:
   express:
     build:
       context: ./redis-server
-      dockerfile: Dockerfile.express
+      dockerfile: Dockerfile
     ports:
       - "4001:4001"  
     environment:

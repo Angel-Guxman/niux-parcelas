@@ -19,9 +19,10 @@ spec:
     - name: docker-sock
       mountPath: /var/run/docker.sock
   - name: docker
-    image: docker:24-dind
-    securityContext:
-      privileged: true
+    image: docker:24-cli
+    command:
+    - cat
+    tty: true
     volumeMounts:
     - name: docker-sock
       mountPath: /var/run/docker.sock
@@ -58,7 +59,7 @@ spec:
                 container('node') {
                     sh '''
                         cd redis-server
-                        npm install --production
+                        npm install
                     '''
                 }
                 container('docker') {
@@ -78,7 +79,7 @@ spec:
             steps {
                 container('node') {
                     sh '''
-                        npm install --production
+                        npm install
                     '''
                 }
                 container('docker') {
@@ -99,7 +100,7 @@ spec:
                 container('node') {
                     sh '''
                         echo "Ejecutando tests..."
-                        # npm test  # Descomenta cuando tengas tests
+                        # npm test
                     '''
                 }
             }
@@ -109,11 +110,9 @@ spec:
             steps {
                 container('kubectl') {
                     sh '''
-                        # Actualiza la imagen en los deployments
                         kubectl set image deployment/express express=${DOCKER_IMAGE_EXPRESS}:${DOCKER_TAG} -n default
                         kubectl set image deployment/nextjs nextjs=${DOCKER_IMAGE_NEXTJS}:${DOCKER_TAG} -n default
                         
-                        # Espera el rollout
                         kubectl rollout status deployment/express -n default --timeout=5m
                         kubectl rollout status deployment/nextjs -n default --timeout=5m
                     '''
@@ -127,10 +126,10 @@ spec:
             echo "Pipeline terminado - Build #${env.BUILD_NUMBER}"
         }
         success {
-            echo "✅ Deploy OK - Revisa http://TU_IP:32000/prometheus para métricas"
+            echo "✅ Deploy OK - http://40.233.24.58:30300"
         }
         failure {
-            echo "❌ Falló - Revisa logs en Grafana"
+            echo "❌ Falló - Revisa logs"
         }
     }
 }
