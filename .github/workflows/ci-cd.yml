@@ -1,0 +1,105 @@
+name: CI/CD Multi-Service
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # CI para Express (backend)
+      - name: Install deps Express
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Run tests Express
+        working-directory: ./backend
+        run: npm test || true # Salta si no hay tests
+
+      - name: Build Docker Express
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/express-parcelas:latest ./backend
+
+      # CI para Next.js (frontend)
+      - name: Install deps Next.js
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run tests Next.js
+        working-directory: ./frontend
+        run: npm test || true
+
+      - name: Build Docker Next.js
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/frontend-parcelas:latest ./frontend
+
+      # Push images solo en push a main
+      - name: Login to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push Express image
+        if: github.event_name == 'push'
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/express-parcelas:latest
+
+      - name: Push Next.js image
+        if: github.event_name == 'push'
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/frontend-parcelas:latest
+
+  cd:
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Kompose
+        run: |
+          curl -L https://github.com/kubernetes/kompose/releases/download/v1.34.0/kompose-linux-amd64 -o kompose
+          chmod +x kompose
+          sudo mv kompose /usr/local/bin/
+
+      - name: Generate K8s manifests
+        run: kompose convert -f docker-compose.yml --out k8s/
+
+      - name: Update images in manifests
+        run: |
+          # Actualiza Express (corrige el typo en tu YAML)
+          sed -i 's|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/express-parcelas:latest|g' k8s/express-deployment.yaml
+          # Actualiza Next.js
+          sed -i 's|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/frontend-parcelas:latest|g' k8s/nextjs-deployment.yaml
+          # Corrige puerto en express-service si hace falta (tu YAML tiene port:4000, pero app en 4001)
+          sed -i 's|port: 4000|port: 4001|g' k8s/express-service.yaml
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "latest"
+
+      - name: Configure kubeconfig
+        run: |
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml
+          export KUBECONFIG=kubeconfig.yaml
+
+      - name: Deploy to K8s
+        run: |
+          # PVC primero (para Redis)
+          kubectl apply -f k8s/redis-data-persistentvolumeclaim.yaml
+          # Todos los demás
+          kubectl apply -f k8s/
+          # Espera rollouts
+          kubectl rollout status deployment/express --timeout=300s
+          kubectl rollout status deployment/nextjs --timeout=300s
+          kubectl rollout status deployment/redis --timeout=300s

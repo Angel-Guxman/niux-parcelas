@@ -1,0 +1,52 @@
+import type { Metadata } from "next";
+//import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
+import { Providers } from "./providers";
+/* 
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+ */
+export const metadata: Metadata = {
+  title: "Parcelas Niux",
+  description: "Sitio de parcelas",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={` antialiased`}
+      >
+        <Providers>
+          <AppRouterCacheProvider>{children}</AppRouterCacheProvider>
+          <ToastContainer
+            position="top-right"
+            autoClose={5000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="light"
+          />
+        </Providers>
+      </body>
+    </html>
+  );
+}
