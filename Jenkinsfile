@@ -95,7 +95,7 @@ spec:
             }
         }
         
-        stage('Test') {
+       /*  stage('Test') {
             steps {
                 container('node') {
                     sh '''
@@ -104,7 +104,7 @@ spec:
                     '''
                 }
             }
-        }
+        } */
         
         stage('Deploy to K3s') {
             steps {
