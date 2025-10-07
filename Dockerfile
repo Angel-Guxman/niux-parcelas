@@ -18,14 +18,7 @@ FROM base AS builder
 RUN npm ic
 
 # Copiamos el resto del código
-COPY src ./src
-COPY public ./public
-COPY next.config.ts ./next.config.ts
-COPY components.json ./components.json
-COPY tsconfig.json ./tsconfig.json
-COPY  postcss.config.mjs ./postcss.config.mjs
-COPY prisma ./prisma
-COPY next-env.d.ts ./next-env.d.ts
+COPY . .
 
 # Generamos la build optimizada de producción
 RUN npx prisma generate
