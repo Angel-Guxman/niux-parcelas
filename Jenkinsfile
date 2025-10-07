@@ -27,7 +27,7 @@ spec:
     - name: docker-sock
       mountPath: /var/run/docker.sock
   - name: kubectl
-    image: bitnami/kubectl:latest
+    image: alpine/k8s:1.28.3
     command:
     - cat
     tty: true
@@ -95,26 +95,27 @@ spec:
             }
         }
         
-       /*  stage('Test') {
-            steps {
-                container('node') {
-                    sh '''
-                        echo "Ejecutando tests..."
-                        # npm test
-                    '''
-                }
-            }
-        } */
-        
         stage('Deploy to K3s') {
             steps {
                 container('kubectl') {
                     sh '''
+                        # Debug
+                        echo "Verificando conectividad..."
+                        kubectl version --client
+                        
+                        # Deploy
+                        echo "Actualizando deployments..."
                         kubectl set image deployment/express express=${DOCKER_IMAGE_EXPRESS}:${DOCKER_TAG} -n default
                         kubectl set image deployment/nextjs nextjs=${DOCKER_IMAGE_NEXTJS}:${DOCKER_TAG} -n default
                         
+                        # Espera
+                        echo "Esperando rollout..."
                         kubectl rollout status deployment/express -n default --timeout=5m
                         kubectl rollout status deployment/nextjs -n default --timeout=5m
+                        
+                        # Status final
+                        kubectl get pods -n default -l app=express
+                        kubectl get pods -n default -l app=nextjs
                     '''
                 }
             }
@@ -126,10 +127,12 @@ spec:
             echo "Pipeline terminado - Build #${env.BUILD_NUMBER}"
         }
         success {
-            echo "✅ Deploy OK - http://40.233.24.58:30300"
+            echo "✅ Deploy OK!"
+            echo "Express: http://40.233.24.58:30401"
+            echo "Next.js: http://40.233.24.58:30300"
         }
         failure {
-            echo "❌ Falló - Revisa logs"
+            echo "❌ Falló - Revisa logs en Jenkins"
         }
     }
 }
