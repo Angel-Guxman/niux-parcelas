@@ -1,17 +1,17 @@
 pipeline {
     agent any  // Corre en cualquier agente (pod en K3s)
     
-    stages {
+    stages {    
         stage('Checkout') {
             steps {
-                git url: 'https://github.com/tu-user/tu-repo.git', branch: 'main'
+                git url: 'https://github.com/Angel-Guxman/niux-parcelas.git', branch: 'main'
             }
         }
         stage('Build') {
             steps {
                 sh 'npm install'  // Build tu app
-                sh 'docker build -t tu-app:latest .'
-                sh 'docker push tu-app:latest'  // A tu registry
+                sh 'docker build -t express-parcelas:latest .'
+                sh 'docker push elyxium/express-parcelas:latest'  // A tu registry
             }
         }
         stage('Test') {
