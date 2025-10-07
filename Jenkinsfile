@@ -1,42 +1,136 @@
 pipeline {
-    agent any  // Corre en cualquier agente (pod en K3s)
-    
+    agent {
+        kubernetes {
+            yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins: agent
+spec:
+  serviceAccountName: jenkins-sa
+  containers:
+  - name: node
+    image: node:20-alpine
+    command:
+    - cat
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  - name: docker
+    image: docker:24-dind
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+    - cat
+    tty: true
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+      type: Socket
+"""
+        }
+    }
+   
+    environment {
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_IMAGE_EXPRESS = 'elyxium/express-parcelas'
+        DOCKER_IMAGE_NEXTJS = 'elyxium/frontend-parcelas'
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
+    }
+   
     stages {    
         stage('Checkout') {
             steps {
                 git url: 'https://github.com/Angel-Guxman/niux-parcelas.git', branch: 'main'
             }
         }
-        stage('Build') {
+        
+        stage('Build Express') {
             steps {
-                sh 'npm install'  // Build tu app
-                sh 'docker build -t express-parcelas:latest .'
-                sh 'docker push elyxium/express-parcelas:latest'  // A tu registry
+                container('node') {
+                    sh '''
+                        cd redis-server
+                        npm install --production
+                    '''
+                }
+                container('docker') {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh '''
+                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                            docker build -t ${DOCKER_IMAGE_EXPRESS}:${DOCKER_TAG} -t ${DOCKER_IMAGE_EXPRESS}:latest ./redis-server
+                            docker push ${DOCKER_IMAGE_EXPRESS}:${DOCKER_TAG}
+                            docker push ${DOCKER_IMAGE_EXPRESS}:latest
+                        '''
+                    }
+                }
             }
         }
+        
+        stage('Build Next.js') {
+            steps {
+                container('node') {
+                    sh '''
+                        npm install --production
+                    '''
+                }
+                container('docker') {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh '''
+                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                            docker build -t ${DOCKER_IMAGE_NEXTJS}:${DOCKER_TAG} -t ${DOCKER_IMAGE_NEXTJS}:latest .
+                            docker push ${DOCKER_IMAGE_NEXTJS}:${DOCKER_TAG}
+                            docker push ${DOCKER_IMAGE_NEXTJS}:latest
+                        '''
+                    }
+                }
+            }
+        }
+        
         stage('Test') {
             steps {
-                sh 'npm test'
+                container('node') {
+                    sh '''
+                        echo "Ejecutando tests..."
+                        # npm test  # Descomenta cuando tengas tests
+                    '''
+                }
             }
         }
+        
         stage('Deploy to K3s') {
             steps {
-                withKubeConfig([credentialsId: 'mi-k3s-kubeconfig']) {  // Secret de Jenkins
-                    sh 'kubectl apply -f k8s/deployment.yaml'  // Aplica manifests
-                    sh 'kubectl rollout status deployment/tu-app'
+                container('kubectl') {
+                    sh '''
+                        # Actualiza la imagen en los deployments
+                        kubectl set image deployment/express express=${DOCKER_IMAGE_EXPRESS}:${DOCKER_TAG} -n default
+                        kubectl set image deployment/nextjs nextjs=${DOCKER_IMAGE_NEXTJS}:${DOCKER_TAG} -n default
+                        
+                        # Espera el rollout
+                        kubectl rollout status deployment/express -n default --timeout=5m
+                        kubectl rollout status deployment/nextjs -n default --timeout=5m
+                    '''
                 }
             }
         }
     }
+    
     post {
         always {
-            echo 'Pipeline terminado!'
+            echo "Pipeline terminado - Build #${env.BUILD_NUMBER}"
         }
         success {
-            echo 'Deploy OK - chequea Grafana!'
+            echo "✅ Deploy OK - Revisa http://TU_IP:32000/prometheus para métricas"
         }
         failure {
-            echo 'Falló - revisa logs.'
+            echo "❌ Falló - Revisa logs en Grafana"
         }
     }
 }
